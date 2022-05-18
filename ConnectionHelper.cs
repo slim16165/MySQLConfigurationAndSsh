@@ -9,6 +9,7 @@ using MySQLConfigurationAndSsh.Config;
 using MySQLConfigurationAndSsh.ProcessPorts;
 using MySqlConnector;
 using Renci.SshNet;
+using SerpRankingAPI.Config;
 
 namespace MySQLConfigurationAndSsh
 {
@@ -91,11 +92,11 @@ namespace MySQLConfigurationAndSsh
             try
             {
                 //If we don't have SSH credentials, use normal DB connection
-                var cred = GenericMySQLConfiguration.SelectedWebsite.SshCredentials;
+                var cred = WebSiteConfiguration.SelectedWebsite.SshCredentials;
                 if (cred == null || string.IsNullOrEmpty(cred.Username) || string.IsNullOrEmpty(cred.Password))
                     return false;
 
-                SshClient client = GenericMySQLConfiguration.SelectedWebsiteSsh;
+                SshClient client = WebSiteConfiguration.SelectedWebsiteSsh;
                 client.Connect();
 
 
@@ -103,7 +104,7 @@ namespace MySQLConfigurationAndSsh
                 client.AddForwardedPort(port);
                 port.Start();
 
-                GenericMySQLConfiguration.SelectedWebsite.MySql.Host = "localhost";
+                WebSiteConfiguration.SelectedWebsite.MySql.Host = "localhost";
 
                 return true;
             }
@@ -135,7 +136,7 @@ namespace MySQLConfigurationAndSsh
             try
             {
                 if(mySqlConnection == null)
-                    mySqlConnection = GenericMySQLConfiguration.SelectedWebsite.MySql.ShortTimeout;
+                    mySqlConnection = WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeout;
                 mySqlConnection.Open();
                 result = true;
                 mySqlConnection.Close();

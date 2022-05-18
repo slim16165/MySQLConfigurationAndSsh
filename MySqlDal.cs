@@ -3,22 +3,23 @@ using System.Data;
 using System.Threading.Tasks;
 using MySQLConfigurationAndSsh.Config;
 using MySqlConnector;
+using SerpRankingAPI.Config;
 
 namespace MySQLConfigurationAndSsh
 {
     public static class MySqlDal
     {
-        //public static MySqlConnection connDbSeozoom => GenericMySQLConfiguration.WebsitesConfigs
+        //public static MySqlConnection connDbSeozoom => WebSiteConfiguration.WebsitesConfigs
         //    .SingleOrDefault(w => w.ShortSiteName == "DbSeozoom")?.MySql;
 
         public static MySqlConnection ConnSitoWp
         {
             get
             {
-                if (GenericMySQLConfiguration.SelectedWebsite == null)
+                if (WebSiteConfiguration.SelectedWebsite == null)
                     throw new Exception("Devi selezionare un sito");
 
-                return GenericMySQLConfiguration.SelectedWebsite?.MySql;
+                return WebSiteConfiguration.SelectedWebsite?.MySql;
             }
         }
 
@@ -26,10 +27,10 @@ namespace MySQLConfigurationAndSsh
         {
             get
             {
-                if (GenericMySQLConfiguration.SelectedWebsite == null)
+                if (WebSiteConfiguration.SelectedWebsite == null)
                     throw new Exception("Devi selezionare un sito");
 
-                return GenericMySQLConfiguration.SelectedWebsite?.MySql.ShortTimeout;
+                return WebSiteConfiguration.SelectedWebsite?.MySql.ShortTimeout;
             }
         }
 
