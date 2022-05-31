@@ -5,8 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using MySQLConfigurationAndSsh.Config;
-using MySQLConfigurationAndSsh.ProcessPorts;
+using System.Threading;
+using System.Threading.Tasks;
+using MySQLConfigurationAndSsh.Ssh;
 using MySqlConnector;
 using Renci.SshNet;
 using SerpRankingAPI.Config;
@@ -15,6 +16,8 @@ namespace MySQLConfigurationAndSsh
 {
     public class ConnectionHelper
     {
+        private static SshClient _sshClient;
+
         public static string GetIPAddress()
         {
             String address = "";
@@ -67,7 +70,7 @@ namespace MySQLConfigurationAndSsh
             if (processesUsingPort.Any())
             {
                 string text = $"Un altro programma sta utilizzando la porta 3306, vuoi terminarlo?\n{debug_message}";
-                
+
                 //var k = new List<(string Testo, bool info)>();
                 ShowMessageBoxEvent?.Invoke(typeof(ConnectionHelper), TupleEventArgs.Create(text, processesUsingPort));
             }
@@ -96,12 +99,20 @@ namespace MySQLConfigurationAndSsh
                 if (cred == null || string.IsNullOrEmpty(cred.Username) || string.IsNullOrEmpty(cred.Password))
                     return false;
 
-                SshClient client = WebSiteConfiguration.SelectedWebsiteSsh;
-                client.Connect();
+                if (_sshClient != null && _sshClient != WebSiteConfiguration.SelectedWebsiteSsh)
+                {
+                    //_sshClient.Disconnect();
+                    //_sshClient.RunCommand("service sshd restart >/dev/null 2>&1 &");
+                    _sshClient.MyDispose();
+                    Thread.Sleep(2000);
+                }
+
+                _sshClient = WebSiteConfiguration.SelectedWebsiteSsh;
+                _sshClient.Connect();
 
 
                 var port = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
-                client.AddForwardedPort(port);
+                _sshClient.AddForwardedPort(port);
                 port.Start();
 
                 WebSiteConfiguration.SelectedWebsite.MySql.Host = "localhost";
@@ -117,14 +128,14 @@ namespace MySQLConfigurationAndSsh
 
         public static (List<Process>, string) CheckIfPortIsUsed(uint boundPort)
         {
-            List<ProcessPort> processes = ProcessPorts.ProcessPorts.ProcessPortMap.FindAll(x => x.PortNumber == boundPort);
+            List<ProcessPort> processes = ProcessPorts.ProcessPortMap.FindAll(x => x.PortNumber == boundPort);
 
             if (!processes.Any()) return (new List<Process>(), "");
 
             var message = processes.Select(s => s.ProcessPortDescription).Aggregate((a, b) => a + "\n" + b);
             var processesUsingPort = from proc in Process.GetProcesses()
-                join procPort in processes on proc.Id equals procPort.ProcessId
-                select proc;
+                                     join procPort in processes on proc.Id equals procPort.ProcessId
+                                     select proc;
 
             return (processesUsingPort.ToList(), message);
 
@@ -135,7 +146,7 @@ namespace MySQLConfigurationAndSsh
             bool result;
             try
             {
-                if(mySqlConnection == null)
+                if (mySqlConnection == null)
                     mySqlConnection = WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeout;
                 mySqlConnection.Open();
                 result = true;

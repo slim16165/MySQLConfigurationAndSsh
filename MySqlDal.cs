@@ -161,6 +161,8 @@ namespace MySQLConfigurationAndSsh
                 timer.Start();
                 progress?.Report("Open connection");
                 conn.Open();
+                //MySqlConnector.MySqlException: 'Couldn't connect to server'
+                //EndOfStreamException: Expected to read 4 header bytes but only received 0.
                 ReportProgress(progress, timer);
 
                 progress?.Report("Open adapter");
