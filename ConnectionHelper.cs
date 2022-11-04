@@ -9,7 +9,6 @@ using System.Threading;
 using MySQLConfigurationAndSsh.Ssh;
 using MySqlConnector;
 using Renci.SshNet;
-using SerpRankingAPI.Config;
 
 namespace MySQLConfigurationAndSsh
 {
