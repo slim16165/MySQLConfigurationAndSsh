@@ -6,11 +6,9 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
-using System.Threading.Tasks;
 using MySQLConfigurationAndSsh.Ssh;
 using MySqlConnector;
 using Renci.SshNet;
-using SerpRankingAPI.Config;
 
 namespace MySQLConfigurationAndSsh
 {

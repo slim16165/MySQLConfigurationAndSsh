@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Data;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
-using MySQLConfigurationAndSsh.Config;
+using GoogleDocToPdfFramework.MySql.Config;
 using MySqlConnector;
-using SerpRankingAPI.Config;
 
 namespace MySQLConfigurationAndSsh
 {
