@@ -14,8 +14,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)Config\GenericMySQLConfiguration.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Config\WebsiteAppConfigBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ConnectionHelper.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)SshEstensionMethod.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)MySqlDal.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SshEstensionMethod.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Parser\ParsedUnparsed.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Ssh\ProcessPort.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Ssh\ProcessPorts.cs" />
