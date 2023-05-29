@@ -46,7 +46,8 @@ namespace MySQLConfigurationAndSsh.Config
             get
             {
                 SshCredentials cred = SelectedWebsite.SshCredentials;
-                SshClient selectedWebsiteSsh = new SshClient(SelectedWebsite.MySql.Host, 22, cred.Username, cred.Password);
+                int port = cred.Port ?? 22;
+                SshClient selectedWebsiteSsh = new SshClient(SelectedWebsite.MySql.Host, port, cred.Username, cred.Password);
                 return selectedWebsiteSsh;
             }
         }
