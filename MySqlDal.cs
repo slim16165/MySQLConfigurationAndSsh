@@ -140,7 +140,7 @@ namespace MySQLConfigurationAndSsh
             return table;
         }
 
-        public async static Task<DataTable> ExecuteQueryAsync(MySqlConnection conn, string commandText,
+        public static async Task<DataTable> ExecuteQueryAsync(MySqlConnection conn, string commandText,
             IProgress<string> progress = null)
         {
             var task = Task.Factory.StartNew(() =>
