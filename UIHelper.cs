@@ -9,7 +9,7 @@ namespace MySQLConfigurationAndSsh;
 
 internal static class UIHelper
 {
-    internal static void UIConnectToDatabaseSsh(uint boundPort = 3306)
+    internal static async void UIConnectToDatabaseSsh(uint boundPort = 3306)
     {
         try
         {
@@ -18,7 +18,7 @@ internal static class UIHelper
             //Se non ho le credenziali SSH non lo abilito lo stesso, ma devo comunque collegarmi
             ConnectionHelper.EnableSshIfPossible(boundPort);
 
-            bool checkDbConnection = ConnectionHelper.CheckDbConnection();
+            bool checkDbConnection = await ConnectionHelper.CheckDbConnectionAsync();
         }
         catch (SocketException ex)
         {

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using MySQLConfigurationAndSsh.Ssh;
 using MySqlConnector;
 using Renci.SshNet;
@@ -140,18 +141,16 @@ public class ConnectionHelper
 
     }
 
-    public static bool CheckDbConnection(MySqlConnection mySqlConnection = null)
+    public static async Task<bool> CheckDbConnectionAsync(MySqlConnection mySqlConnection = null)
     {
         bool result;
         try
         {
-            if (mySqlConnection == null)
-                mySqlConnection = WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeout;
-            mySqlConnection.Open();
-            result = true;
-            mySqlConnection.Close();
+            mySqlConnection ??= WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeout;
 
-            //client.Disconnect();
+            await mySqlConnection.OpenAsync().ConfigureAwait(false);
+            result = true;
+            await mySqlConnection.CloseAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -160,6 +159,7 @@ public class ConnectionHelper
 
         return result;
     }
+
 }
 
 public static class TupleEventArgs

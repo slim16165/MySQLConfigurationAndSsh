@@ -3,6 +3,7 @@ using System.Data;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using MySqlConnector;
+using SeoZoomReader.BLL;
 using SerpRankingAPI.Config;
 
 namespace MySQLConfigurationAndSsh;
@@ -98,12 +99,10 @@ public static class MySqlDal
         }
     }
 
-    public static DataTable ExecuteQuery(MySqlConnection conn, string commandText, IProgress<string> progress = null)
+    public static DataTable ExecuteQuery(MySqlConnection conn, string commandText, IProgressManager progress = null)
     {
         var table = new DataTable();
             
-        //var task = Task.Factory.StartNew(() =>
-        //{
         var cmd = new MySqlCommand
         {
             CommandText = commandText,
@@ -114,26 +113,26 @@ public static class MySqlDal
 
         var timer = new Stopwatch();
         timer.Start();
-        progress?.Report("Open connection");
+        progress?.ReportMessage("Open connection");
         conn.Open();
         //MySqlConnector.MySqlException: 'Couldn't connect to server'
         //EndOfStreamException: Expected to read 4 header bytes but only received 0.
         ReportProgress(progress, timer);
 
-        progress?.Report("Open adapter");
+        progress?.ReportMessage("Open adapter");
         var adapter = new MySqlDataAdapter(cmd);
         ReportProgress(progress, timer);
 
-        progress?.Report("Start adapter.Fill");
+        progress?.ReportMessage("Start adapter.Fill");
         adapter.Fill(table);
         ReportProgress(progress, timer);
 
 
-        progress?.Report("Start executeReader");
+        progress?.ReportMessage("Start executeReader");
         var p = cmd.ExecuteReader();
         ReportProgress(progress, timer);
 
-        progress?.Report(Environment.NewLine);
+        progress?.ReportMessage(Environment.NewLine);
         //});
 
             
@@ -141,9 +140,9 @@ public static class MySqlDal
     }
 
     public static async Task<DataTable> ExecuteQueryAsync(MySqlConnection conn, string commandText,
-        IProgress<string> progress = null)
+        IProgressManager progress)
     {
-        var task = Task.Factory.StartNew(() =>
+        return await Task.Run(() =>
         {
             var table = new DataTable();
 
@@ -157,37 +156,35 @@ public static class MySqlDal
 
             var timer = new Stopwatch();
             timer.Start();
-            progress?.Report("Open connection");
+            progress?.ReportMessage("Open connection; conn.State = " + conn.State);
+            
             conn.Open();
             //MySqlConnector.MySqlException: 'Couldn't connect to server'
             //EndOfStreamException: Expected to read 4 header bytes but only received 0.
             ReportProgress(progress, timer);
 
-            progress?.Report("Open adapter");
+            progress?.ReportMessage("Open adapter");
             var adapter = new MySqlDataAdapter(cmd);
             ReportProgress(progress, timer);
 
-            progress?.Report("Start adapter.Fill");
+            progress?.ReportMessage("Start adapter.Fill");
             adapter.Fill(table);
             ReportProgress(progress, timer);
 
 
-            progress?.Report("Start executeReader");
+            progress?.ReportMessage("Start executeReader");
             var p = cmd.ExecuteReader();
             ReportProgress(progress, timer);
 
-            progress?.Report(Environment.NewLine);
+            progress?.ReportMessage(Environment.NewLine);
 
             return table;
         });
-
-        return await task;
-
     }
 
-    private static void ReportProgress(IProgress<string> progress, Stopwatch timer)
+    private static void ReportProgress(IProgressManager progress, Stopwatch timer)
     {
-        progress?.Report($"Done in {timer.ElapsedMilliseconds}ms");
+        progress?.ReportMessage($"Done in {timer.ElapsedMilliseconds}ms");
         timer.Restart();
     }
 
