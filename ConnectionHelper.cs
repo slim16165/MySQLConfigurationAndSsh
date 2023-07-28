@@ -107,6 +107,7 @@ public class ConnectionHelper
                 Thread.Sleep(2000);
             }
 
+            //qui si collega, non la riga dopo!
             _sshClient = WebSiteConfiguration.SelectedWebsiteSsh;
             _sshClient.Connect();
 
