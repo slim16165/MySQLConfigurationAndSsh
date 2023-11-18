@@ -66,5 +66,7 @@ namespace MySQLConfigurationAndSsh.Config
             if (WebsitesConfigsBase.Count == 1)
                 SelectedWebsiteName = WebsitesConfigsBase[0].ShortSiteName;
         }
+
+        public abstract WebsiteAppConfigBase GetSelectedWebsite();
     }
 }
