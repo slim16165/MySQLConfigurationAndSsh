@@ -15,10 +15,10 @@ namespace MySQLConfigurationAndSsh
         {
             get
             {
-                if (GenericMySQLConfiguration.SelectedWebsite == null)
+                if (GenericMySQLConfigurationNew.Instance.WebsitesConfigs == null)
                     throw new Exception("Devi selezionare un sito");
 
-                return GenericMySQLConfiguration.SelectedWebsite?.MySql;
+                return GenericMySQLConfigurationNew.Instance.SelectedWebsite?.MySql;
             }
         }
 
@@ -26,10 +26,10 @@ namespace MySQLConfigurationAndSsh
         {
             get
             {
-                if (GenericMySQLConfiguration.SelectedWebsite == null)
+                if (GenericMySQLConfigurationNew.Instance.SelectedWebsite == null)
                     throw new Exception("Devi selezionare un sito");
 
-                return GenericMySQLConfiguration.SelectedWebsite?.MySql.ShortTimeout;
+                return GenericMySQLConfigurationNew.Instance.SelectedWebsite?.MySql.ShortTimeout;
             }
         }
 

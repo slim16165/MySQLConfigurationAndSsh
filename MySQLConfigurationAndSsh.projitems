@@ -11,7 +11,7 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Config\Data\MySqlConnectionAppConfig.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Config\Data\SshCredentials.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Config\GenericMySQLConfiguration.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Config\GenericMySQLConfigurationNew.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Config\WebsiteAppConfigBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ConnectionHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)MySqlDal.cs" />
