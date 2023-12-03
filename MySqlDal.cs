@@ -117,6 +117,58 @@ namespace MySQLConfigurationAndSsh
             return table;
         }
 
+        public static object ExecuteScalar(MySqlConnection conn, string commandText, MySqlParameterCollection parameters)
+        {
+            using var cmd = new MySqlCommand
+            {
+                CommandText = commandText,
+                Connection = conn
+            };
+            foreach (MySqlParameter parameter in parameters)
+            {
+                cmd.Parameters.Add(parameter);
+            }
+
+            // Assuming the connection is already open
+            try
+            {
+                return cmd.ExecuteScalar();
+            }
+            catch
+            {
+                // Handle possible exceptions such as connection issues, SQL errors, etc.
+                throw;
+            }
+        }
+
+        public static void ExecuteNonQueryWithOpenConnection(MySqlConnection conn, string commandText, MySqlParameterCollection parameters)
+        {
+            using var cmd = new MySqlCommand
+            {
+                CommandText = commandText,
+                Connection = conn
+            };
+            foreach (MySqlParameter parameter in parameters)
+            {
+                cmd.Parameters.Add(parameter);
+            }
+
+            // It's optional to check if the connection State is Open here since we're assuming it
+            if (conn.State != ConnectionState.Open)
+            {
+                conn.Open();
+            }
+
+            try
+            {
+                cmd.ExecuteNonQuery();
+            }
+            finally
+            {
+                conn.Close();
+            }
+        }
+
         public static MySqlDataReader ExecuteQuery2(MySqlConnection conn, string commandText)
         {
             var cmd = new MySqlCommand
