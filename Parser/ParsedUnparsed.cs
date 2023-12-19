@@ -10,12 +10,14 @@ public class ParsedUnparsed<T>
     public string Unparsed { get; }
     public T Parsed { get; set; }
     public bool IsParsed { get; }
-
+    public string ErrorMessage { get; private set; }
 
     public ParsedUnparsed(string columnName, string unparsed, Func<string, T> conversionMethod = null)
     {
         ColumnName = columnName;
         Unparsed = unparsed;
+        IsParsed = true;
+        ErrorMessage = string.Empty;
         try
         {
             Parsed = conversionMethod != null ? conversionMethod(unparsed) : ParseStringToValue<T>(unparsed);
@@ -24,7 +26,17 @@ public class ParsedUnparsed<T>
         {
             Parsed = default;
             IsParsed = false;
+            ErrorMessage = $"Errore durante il parsing della colonna '{ColumnName}': {e.Message}";
         }
+    }
+
+    public ParsedUnparsed(string columnName, T parsed, Func<string, T> conversionMethod = null)
+    {
+        ColumnName = columnName;
+        Unparsed = parsed.ToString();
+        IsParsed = true;
+        ErrorMessage = string.Empty;
+        Parsed = parsed;
     }
 
 
@@ -36,12 +48,17 @@ public class ParsedUnparsed<T>
             return (T)(object)ParseDate(cellValue);
 
         var converter = TypeDescriptor.GetConverter(typeof(T));
-        if (converter != null)
+        if (converter != null && converter.CanConvertFrom(typeof(string)))
         {
             return (T)converter.ConvertFromString(cellValue);
         }
         return default;
     }
+
+    //public static implicit operator ParsedUnparsed<T>(string value)
+    //{
+    //    return new ParsedUnparsed<T>(null, value); 
+    //}
 
 
     private static T ParseDate(string cellValue)

@@ -18,7 +18,7 @@ namespace MySQLConfigurationAndSsh.Config.Data
             new MySqlConnection
             {
                 ConnectionString =
-                    $"server={Host};database={Database};user={UserId};password={Password};ConnectionTimeout=5;Compress=true;Convert Zero Datetime=true;AllowZeroDateTime=true"
+                    $"server={Host};database={Database};user={UserId};password={Password};ConnectionTimeout=40;Compress=false;Convert Zero Datetime=true;AllowZeroDateTime=true"
             };
 
         public static implicit operator MySqlConnection(MySqlConnectionAppConfig o)

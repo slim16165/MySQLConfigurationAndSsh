@@ -95,17 +95,21 @@ namespace MySQLConfigurationAndSsh
                 if (cred == null || string.IsNullOrEmpty(cred.Username) || string.IsNullOrEmpty(cred.Password))
                     return false;
 
-                SshClient client = GenericMySQLConfigurationNew.Instance.SelectedWebsiteSsh;
-                client.Connect();
+                SshClient sshClient = GenericMySQLConfigurationNew.Instance.SelectedWebsiteSsh;
+                sshClient.Connect();
 
+                if (sshClient.IsConnected)
+                {
+                    var port = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
+                    sshClient.AddForwardedPort(port);
+                    port.Start();
 
-                var port = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
-                client.AddForwardedPort(port);
-                port.Start();
+                    GenericMySQLConfigurationNew.Instance.SelectedWebsite.MySql.Host = "localhost";
 
-                GenericMySQLConfigurationNew.Instance.SelectedWebsite.MySql.Host = "localhost";
+                    return true;
+                }
 
-                return true;
+                return false;
             }
             catch (Exception e)
             {
