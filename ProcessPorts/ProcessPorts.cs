@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace MySQLConfigurationAndSsh.ProcessPorts
@@ -22,86 +23,97 @@ namespace MySQLConfigurationAndSsh.ProcessPorts
         /// the process (name and id) and the ports that the process is using.
         /// </summary>
         /// <returns></returns>
-        private static List<ProcessPort> GetNetStatPorts()
+        public static List<ProcessPort> GetNetStatPorts()
         {
-            List<ProcessPort> processPorts = new List<ProcessPort>();
-
             try
             {
-                using (Process proc = new Process())
-                {
-
-                    ProcessStartInfo startInfo = new ProcessStartInfo();
-                    startInfo.FileName = "netstat.exe";
-                    startInfo.Arguments = "-a -n -o";
-                    startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-                    startInfo.UseShellExecute = false;
-                    startInfo.RedirectStandardInput = true;
-                    startInfo.RedirectStandardOutput = true;
-                    startInfo.RedirectStandardError = true;
-
-                    proc.StartInfo = startInfo;
-                    proc.Start();
-
-                    StreamReader standardOutput = proc.StandardOutput;
-                    StreamReader standardError = proc.StandardError;
-
-                    string netStatContent = standardOutput.ReadToEnd() + standardError.ReadToEnd();
-                    string netStatExitStatus = proc.ExitCode.ToString();
-
-                    if (netStatExitStatus != "0")
-                    {
-                        Console.WriteLine("NetStat command failed.   This may require elevated permissions.");
-                    }
-
-                    string[] netStatRows = Regex.Split(netStatContent, "\r\n");
-
-                    foreach (string netStatRow in netStatRows)
-                    {
-                        string[] tokens = Regex.Split(netStatRow.Trim(), "\\s+");
-                        if (tokens.Length > 4 && (tokens[1].Equals("UDP") || tokens[1].Equals("TCP")))
-                        {
-                            string ipAddress = Regex.Replace(tokens[2], @"\[(.*?)\]", "1.1.1.1");
-                            try
-                            {
-                                int processId = Convert.ToInt16(tokens[4]);
-                                int int16 = Convert.ToInt16(tokens[5]);
-                                string processName = tokens[1] == "UDP" ? GetProcessName(processId) : GetProcessName(int16);
-                                int processId2 = tokens[1] == "UDP" ? processId : int16;
-                                string protocol = ipAddress.Contains("1.1.1.1") ? $"{tokens[1]}v6" : $"{tokens[1]}v4";
-                                int portNumber = Convert.ToInt32(ipAddress.Split(':')[1]);
-
-                                var processPort = new ProcessPort(
-                                    processName,
-                                    processId2,
-                                    protocol,
-                                    portNumber
-                                );
-
-                                processPorts.Add(processPort);
-                            }
-                            catch
-                            {
-                                Console.WriteLine("Could not convert the following NetStat row to a Process to Port mapping.");
-                                Console.WriteLine(netStatRow);
-                            }
-                        }
-                        else
-                        {
-                            if (!netStatRow.Trim().StartsWith("Proto") && !netStatRow.Trim().StartsWith("Active") && !string.IsNullOrWhiteSpace(netStatRow))
-                            {
-                                Console.WriteLine("Unrecognized NetStat row to a Process to Port mapping.");
-                                Console.WriteLine(netStatRow);
-                            }
-                        }
-                    }
-                }
+                string netStatOutput = RunNetStatCommand();
+                List<ProcessPort> netStatPorts = ParseNetStatOutput(netStatOutput);
+                return netStatPorts;
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Console.WriteLine($"Error in GetNetStatPorts: {ex.Message}");
+                return new List<ProcessPort>();
             }
-            return processPorts;
+        }
+
+        private static string RunNetStatCommand()
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "netstat.exe",
+                    Arguments = "-a -n -o",
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                }
+            };
+            process.Start();
+            string output = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                Console.WriteLine("NetStat command failed. This may require elevated permissions.");
+                Console.WriteLine(error);
+            }
+
+            return output;
+        }
+
+        private static List<ProcessPort> ParseNetStatOutput(string output)
+        {
+            return Regex.Split(output, "\r\n")
+                .Where(IsRelevantRow)
+                .Select(ParseRow)
+                .Where(processPort => processPort != null)
+                .ToList();
+        }
+
+        private static bool IsRelevantRow(string row)
+        {
+            return !string.IsNullOrWhiteSpace(row) &&
+                   !row.Trim().StartsWith("Proto") &&
+                   !row.Trim().StartsWith("Active");
+        }
+
+        private static ProcessPort ParseRow(string row)
+        {
+            try
+            {
+                string[] tokens = Regex.Split(row.Trim(), "\\s+");
+                if (tokens.Length > 4 && (tokens[0] == "UDP" || tokens[0] == "TCP"))
+                {
+                    return ParseProcessPort(tokens);
+                }
+
+                Debug.WriteLine($"Unrecognized NetStat row: {row}");
+                return null;
+            }
+            catch
+            {
+                Debug.WriteLine($"Failed to parse NetStat row: {row}");
+                return null;
+            }
+        }
+
+        private static ProcessPort ParseProcessPort(string[] tokens)
+        {
+            string protocol = tokens[1];
+            string address = Regex.Replace(tokens[2], @"\[(.*?)\]", "1.1.1.1");
+            bool isIPv6 = address.Contains("1.1.1.1");
+            int portNumber = Convert.ToInt32(address.Split(':')[1]);
+            int processId = Convert.ToInt32(tokens[4]);
+            var processName = GetProcessName(processId);
+
+            string fullProtocol = isIPv6 ? $"{protocol}v6" : $"{protocol}v4";
+
+            return new ProcessPort(processName, processId, fullProtocol, portNumber);
         }
 
         /// <summary>

@@ -14,6 +14,8 @@ namespace MySQLConfigurationAndSsh
 {
     public class ConnectionHelper
     {
+        public static SshClient sshClient;
+
         public static string GetIPAddress()
         {
             String address = "";
@@ -59,6 +61,10 @@ namespace MySQLConfigurationAndSsh
 
         public static void CheckAndHandlePortIsUsed()
         {
+            //Potrei essermi già connesso, in tal caso non devo fare alcun controllo
+            if(sshClient is { IsConnected: true })
+                return;
+
             //potrei avere uno scambio di messaggi asincroni, un riferimento al chiamante, esporre degli eventi 
             //Deconstructor
             var (processesUsingPort, debug_message) = CheckIfPortIsUsed(3306);
@@ -88,6 +94,7 @@ namespace MySQLConfigurationAndSsh
 
         public static bool EnableSshIfPossible(uint boundPort)
         {
+            
             try
             {
                 //If we don't have SSH credentials, use normal DB connection
@@ -95,19 +102,29 @@ namespace MySQLConfigurationAndSsh
                 if (cred == null || string.IsNullOrEmpty(cred.Username) || string.IsNullOrEmpty(cred.Password))
                     return false;
 
-                SshClient sshClient = GenericMySQLConfigurationNew.Instance.SelectedWebsiteSsh;
+                sshClient = GenericMySQLConfigurationNew.Instance.SelectedWebsiteSsh;
                 sshClient.Connect();
 
-                if (sshClient.IsConnected)
+                if (!sshClient.IsConnected) return false;
+
+                var port = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
+                
+                try
                 {
-                    var port = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
                     sshClient.AddForwardedPort(port);
                     port.Start();
-
-                    GenericMySQLConfigurationNew.Instance.SelectedWebsite.MySql.Host = "localhost";
-
-                    return true;
                 }
+                catch (SocketException ex)
+                {
+                    // Gestisci l'eccezione qui, ad esempio stampando un messaggio di errore e terminando l'applicazione.
+                    Console.WriteLine("Errore: " + ex.Message);
+                    sshClient.Disconnect();
+                        
+                }
+
+                GenericMySQLConfigurationNew.Instance.SelectedWebsite.MySql.Host = "localhost";
+
+                return true;
 
                 return false;
             }
