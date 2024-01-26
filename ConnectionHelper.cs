@@ -124,6 +124,9 @@ namespace MySQLConfigurationAndSsh
 
                 GenericMySQLConfigurationNew.Instance.SelectedWebsite.MySql.Host = "localhost";
 
+
+                GenericMySQLConfigurationNew.Instance.SelectedWebsite.MySql.ShortTimeout.Open();
+
                 return true;
 
                 return false;

@@ -119,6 +119,9 @@ namespace MySQLConfigurationAndSsh
 
         public static object ExecuteScalar(MySqlConnection conn, string commandText, MySqlParameterCollection parameters)
         {
+            if(conn.State == ConnectionState.Closed)
+                conn.Open();
+
             using var cmd = new MySqlCommand
             {
                 CommandText = commandText,
@@ -188,9 +191,28 @@ namespace MySQLConfigurationAndSsh
             return p;
         }
 
+        public static MySqlDataReader ExecuteQuery2(MySqlCommand cmd)
+        {
+            cmd.Connection.Open();
+
+            var p = cmd.ExecuteReader();
+
+            return p;
+        }
+
         public static string MatchWholeWord(string parola)
         {
             return $"'[[:<:]]{parola}[[:>:]]' ";
+        }
+
+        public static void ExecuteNonQueryWithOpenConnection(MySqlCommand command)
+        {
+            ExecuteNonQueryWithOpenConnection(command.Connection, command.CommandText, command.Parameters);
+        }
+
+        public static object ExecuteScalar(MySqlCommand command)
+        {
+            return ExecuteScalar(command.Connection, command.CommandText, command.Parameters);
         }
     }
 }

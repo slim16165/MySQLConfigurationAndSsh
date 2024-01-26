@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 
@@ -20,13 +21,19 @@ public class ParsedUnparsed<T>
         ErrorMessage = string.Empty;
         try
         {
-            Parsed = conversionMethod != null ? conversionMethod(unparsed) : ParseStringToValue<T>(unparsed);
+            //Workaround
+            if (ColumnName == "TesseraN" && unparsed == "staff")
+            {
+                Parsed = default(T);
+            }
+            else
+                Parsed = conversionMethod != null ? conversionMethod(unparsed) : ParseStringToValue<T>(unparsed);
         }
         catch (Exception e)
         {
             Parsed = default;
             IsParsed = false;
-            ErrorMessage = $"Errore durante il parsing della colonna '{ColumnName}': {e.Message}";
+            ErrorMessage = $"Errore durante il parsing della colonna '{ColumnName}', valore {unparsed}: {e.Message}";
         }
     }
 
@@ -47,6 +54,11 @@ public class ParsedUnparsed<T>
         if (typeof(T) == typeof(DateTime))
             return (T)(object)ParseDate(cellValue);
 
+        if (typeof(T) == typeof(bool) || typeof(T) == typeof(bool?))
+        {
+            return (T)(object)ParseBoolean(cellValue);
+        }
+
         var converter = TypeDescriptor.GetConverter(typeof(T));
         if (converter != null && converter.CanConvertFrom(typeof(string)))
         {
@@ -63,11 +75,35 @@ public class ParsedUnparsed<T>
 
     private static T ParseDate(string cellValue)
     {
-        CultureInfo enUS = new CultureInfo("en-US");
-        if (DateTime.TryParseExact(cellValue, "yyyy-MM-dd HH.mm.ss", enUS, DateTimeStyles.None,
-                out DateTime result))
+        CultureInfo enUS = new("en-US");
+        string[] formats = { "yyyy-MM-dd HH.mm.ss", "M/d/yyyy HH:mm:ss" };
+        if (DateTime.TryParseExact(cellValue, formats, enUS, DateTimeStyles.None, out DateTime result))
             return (T)(object)result;
-        else throw new Exception(cellValue + "non è una data valida");
+        else throw new Exception(cellValue + " non è una data valida");
+    }
+
+
+    private static bool? ParseBoolean(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return null;
+
+        // Aggiungi qui tutte le stringhe che vuoi mappare a true
+        var trueValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Sì", "Yes", "True", "V", "X" };
+
+        // Aggiungi qui tutte le stringhe che vuoi mappare a false
+        var falseValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "No", "False" };
+
+        if (trueValues.Contains(value))
+        {
+            return true;
+        }
+        if (falseValues.Contains(value))
+        {
+            return false;
+        }
+
+        throw new FormatException($"Il valore '{value}' non può essere convertito in un booleano.");
     }
 
     public override string ToString()

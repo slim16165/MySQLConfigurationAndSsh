@@ -15,6 +15,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Config\WebsiteAppConfigBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ConnectionHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)MySqlDal.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Parser\DateParserHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Parser\ParsedUnparsed.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ProcessPorts\ProcessPort.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ProcessPorts\ProcessPorts.cs" />
