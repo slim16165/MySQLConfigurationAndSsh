@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Threading;
@@ -219,6 +221,49 @@ public static class MySqlDal
             progress?.ReportMessage("Query execution completed.");
         }
     }
+
+    public static async IAsyncEnumerable<T> ExecuteQueryWithStreamingAsync<T>(string connectionString, string commandText,
+        Func<MySqlDataReader, T> rowMapper, IProgressManager progress, CancellationToken cancellationToken = default)
+    {
+        // Questo metodo esegue la query e inizia l'elaborazione dei record in modo "rolling",
+        // senza attendere il completamento dell'intero risultato.
+        // I record vengono mappati utilizzando la funzione rowMapper e elaborati man mano che vengono letti.
+
+        await using var conn = new MySqlConnection(connectionString);
+        await using var cmd = new MySqlCommand(commandText, conn);
+        cmd.CommandTimeout = 180;
+
+        var timer = Stopwatch.StartNew();
+
+        //try
+        //{
+        progress?.ReportMessage("Opening connection...");
+        await conn.OpenAsync(cancellationToken);
+        ReportProgress(progress, timer);
+
+        progress?.ReportMessage("Executing query...");
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        ReportProgress(progress, timer);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            ReportProgress(progress, timer);
+            yield return rowMapper(reader);
+        }
+        //}
+        //catch (Exception ex)
+        //{
+        //    progress?.ReportMessage($"Error: {ex.Message}");
+        //    throw;
+        //}
+        //finally
+        //{
+        timer.Stop();
+        progress?.ReportMessage("Query execution completed.");
+        //}
+    }
+
+
 
     private static void ReportProgress(IProgressManager progress, Stopwatch timer)
     {
