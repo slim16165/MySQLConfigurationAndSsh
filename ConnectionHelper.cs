@@ -147,7 +147,7 @@ public class ConnectionHelper
         bool result;
         try
         {
-            mySqlConnection ??= WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeout;
+            mySqlConnection ??= WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeoutConnection;
 
             await mySqlConnection.OpenAsync().ConfigureAwait(false);
             result = true;

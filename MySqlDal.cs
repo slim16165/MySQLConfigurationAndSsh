@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Data;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using MySqlConnector;
 using SeoZoomReader.BLL;
@@ -20,7 +21,7 @@ public static class MySqlDal
             if (WebSiteConfiguration.SelectedWebsite == null)
                 throw new Exception("Devi selezionare un sito");
 
-            return WebSiteConfiguration.SelectedWebsite?.MySql;
+            return WebSiteConfiguration.SelectedWebsite?.MySql.Connection;
         }
     }
 
@@ -31,7 +32,7 @@ public static class MySqlDal
             if (WebSiteConfiguration.SelectedWebsite == null)
                 throw new Exception("Devi selezionare un sito");
 
-            return WebSiteConfiguration.SelectedWebsite?.MySql.ShortTimeout;
+            return WebSiteConfiguration.SelectedWebsite?.MySql.ShortTimeoutConnection;
         }
     }
 
@@ -102,7 +103,7 @@ public static class MySqlDal
     public static DataTable ExecuteQuery(MySqlConnection conn, string commandText, IProgressManager progress = null)
     {
         var table = new DataTable();
-            
+
         var cmd = new MySqlCommand
         {
             CommandText = commandText,
@@ -135,7 +136,7 @@ public static class MySqlDal
         progress?.ReportMessage(Environment.NewLine);
         //});
 
-            
+
         return table;
     }
 
@@ -146,7 +147,7 @@ public static class MySqlDal
         {
             var table = new DataTable();
 
-            var cmd = new MySqlCommand
+            using var cmd = new MySqlCommand
             {
                 CommandText = commandText,
                 Connection = conn,
@@ -157,7 +158,7 @@ public static class MySqlDal
             var timer = new Stopwatch();
             timer.Start();
             progress?.ReportMessage("Open connection; conn.State = " + conn.State);
-            
+
             conn.Open();
             //MySqlConnector.MySqlException: 'Couldn't connect to server'
             //EndOfStreamException: Expected to read 4 header bytes but only received 0.
@@ -173,13 +174,50 @@ public static class MySqlDal
 
 
             progress?.ReportMessage("Start executeReader");
-            var p = cmd.ExecuteReader();
+            var p = cmd.ExecuteReaderAsync();
             ReportProgress(progress, timer);
 
             progress?.ReportMessage(Environment.NewLine);
 
             return table;
         });
+    }
+
+    public static async Task<DataTable> ExecuteQueryAsyncNew(string connectionString, string commandText,
+        IProgressManager progress, CancellationToken cancellationToken = default)
+    {
+        var timer = Stopwatch.StartNew();
+
+        try
+        {
+            await using var conn = new MySqlConnection(connectionString);
+            await using var cmd = new MySqlCommand(commandText, conn);
+            cmd.CommandTimeout = 120;
+
+            progress?.ReportMessage("Opening connection...");
+            await conn.OpenAsync(cancellationToken);
+            ReportProgress(progress, timer);
+
+            progress?.ReportMessage("Executing query...");
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            ReportProgress(progress, timer);
+
+            var table = new DataTable();
+            table.Load(reader);
+            ReportProgress(progress, timer);
+
+            return table;
+        }
+        catch (Exception ex)
+        {
+            progress?.ReportMessage($"Error: {ex.Message}");
+            throw;
+        }
+        finally
+        {
+            timer.Stop();
+            progress?.ReportMessage("Query execution completed.");
+        }
     }
 
     private static void ReportProgress(IProgressManager progress, Stopwatch timer)
