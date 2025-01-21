@@ -1,4 +1,4 @@
-﻿namespace MySQLConfigurationAndSsh.ProcessPorts;
+﻿namespace MySQLConfigurationAndSsh;
 
 /// <summary>
 /// A mapping for processes to ports and ports to processes that are being used in the system.
@@ -26,6 +26,8 @@ public class ProcessPort
     }
 
     public string ProcessPortDescription => $"{_processName} ({_protocol} port {_portNumber} pid {_processId})";
+    //public string ProcessPortDescription =>
+    // $"Process: {ProcessName} (ID: {ProcessId}), Protocol: {Protocol}, Porta: {PortNumber}";
 
     public string ProcessName => _processName;
 

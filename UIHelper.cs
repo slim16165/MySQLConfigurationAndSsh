@@ -43,7 +43,7 @@ internal static class UIHelper
             if (r == MessageBoxResult.Yes)
             {
                 var processesUsingPort = tupleEventArgs.Item2;
-                ConnectionHelper.KillProcess(processesUsingPort);
+                ConnectionHelper.KillProcesses(processesUsingPort);
             }
         }
 
