@@ -9,8 +9,6 @@ using System.Threading.Tasks;
 
 namespace MySQLConfigurationAndSsh;
 
-
-
 /// <summary>
 /// Classe statica che esegue il comando netstat e restituisce l'elenco delle porte usate e dal quale processo.
 /// </summary>
@@ -23,36 +21,35 @@ public static class ProcessPorts
     /// Restituisce la mappatura (ProcessPort) chiamando <see cref="GetNetStatPortsAsync"/>.
     /// </summary>
     public static List<ProcessPort> ProcessPortMap
-        => GetNetStatPortsAsync(DEFAULT_NETSTAT_TIMEOUT_MS).GetAwaiter().GetResult();
+        => Task.Run(async () => await GetNetStatPortsAsync(DEFAULT_NETSTAT_TIMEOUT_MS)).GetAwaiter().GetResult();
 
-    /// <summary>
-    /// Versione asincrona di <see cref="GetNetStatPortsAsync(int)"/> con timeout di default.
-    /// </summary>
-    public static Task<List<ProcessPort>> GetNetStatPortsAsync()
-        => GetNetStatPortsAsync(DEFAULT_NETSTAT_TIMEOUT_MS);
-
+    
     /// <summary>
     /// Esegue il comando <c>netstat.exe -a -n -o</c>, lo analizza, e restituisce la lista di <see cref="ProcessPort"/>.
     /// La chiamata a <c>netstat</c> ha un timeout di <paramref name="netstatTimeoutMs"/> ms.
     /// </summary>
     /// <param name="netstatTimeoutMs">Timeout per il comando netstat (ms)</param>
-    public static async Task<List<ProcessPort>> GetNetStatPortsAsync(int netstatTimeoutMs)
+    public static Task<List<ProcessPort>> GetNetStatPortsAsync(int netstatTimeoutMs = DEFAULT_NETSTAT_TIMEOUT_MS)
     {
-        try
+        return Task.Run(async () =>
         {
-            // Avvio netstat in modo asincrono con un timeout
-            string netstatOutput = await RunNetStatCommandAsync(netstatTimeoutMs);
+            try
+            {
+                // Avvio netstat in modo asincrono con un timeout
+                string netstatOutput = await RunNetStatCommandAsync(netstatTimeoutMs).ConfigureAwait(false);
 
-            // Parsing dell'output
-            List<ProcessPort> netStatPorts = ParseNetStatOutput(netstatOutput);
-            return netStatPorts;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[GetNetStatPortsAsync] Errore: {ex.Message}");
-            return new List<ProcessPort>();
-        }
+                // Parsing dell'output
+                List<ProcessPort> netStatPorts = ParseNetStatOutput(netstatOutput);
+                return netStatPorts;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[GetNetStatPortsAsync] Errore: {ex.Message}");
+                return new List<ProcessPort>();
+            }
+        });
     }
+
 
     #region Invocazione netstat con timeout
 

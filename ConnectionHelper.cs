@@ -108,10 +108,11 @@ public static class ConnectionHelper
         // Controllo se c'è già un SSH tunnel stabilito
         if (_sshClient?.IsConnected == true)
             return;
-
-        var (processesUsingPort, debugMessage) = CheckProcessUsingPort(3306);
-        if (processesUsingPort.Any())
+        
+        if (CheckIfPortIsUsed(3306))
         {
+            var (processesUsingPort, debugMessage) = CheckProcessUsingPort(3306);
+
             string text = $"Un altro programma sta utilizzando la porta 3306. Vuoi terminarlo?\n{debugMessage}";
             // Invoca l'evento, così che la UI possa gestire la richiesta
             ShowMessageBoxEvent?.Invoke(typeof(ConnectionHelper), TupleEventArgs.Create(text, processesUsingPort));
@@ -137,6 +138,13 @@ public static class ConnectionHelper
             .ToList();
 
         return (processesUsingPort, message);
+    }
+
+    public static bool CheckIfPortIsUsed(uint boundPort)
+    {
+        var ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+        var tcpListeners = ipProperties.GetActiveTcpListeners();
+        return tcpListeners.Any(endpoint => endpoint.Port == boundPort);
     }
 
     /// <summary>
