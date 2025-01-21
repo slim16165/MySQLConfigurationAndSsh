@@ -1,11 +1,10 @@
 ﻿using MySQLConfigurationAndSsh.Config.Data;
 
-namespace MySQLConfigurationAndSsh.Config
+namespace MySQLConfigurationAndSsh.Config;
+
+public class WebsiteAppConfigBase
 {
-    public class WebsiteAppConfigBase
-    {
-        public Data.MySqlConnectionAppConfig MySql { get; set; }
-        public SshCredentials SshCredentials { get; set; }
-        public string? ShortSiteName { get; set; }
-    }
+    public Data.MySqlConnectionAppConfig MySql { get; set; }
+    public SshCredentials SshCredentials { get; set; }
+    public string? ShortSiteName { get; set; }
 }

@@ -20,6 +20,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)ProcessPorts\ProcessPort.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ProcessPorts\ProcessPorts.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Config\Data\RootConfigBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)TupleEventArgs.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)UIHelper.cs" />
   </ItemGroup>
   <ItemGroup>
