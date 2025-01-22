@@ -51,6 +51,4 @@ internal static class UIHelper
 
         ConnectionHelper.CheckAndHandlePortIsUsed();
     }
-
-
 }

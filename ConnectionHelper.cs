@@ -191,13 +191,19 @@ public static class ConnectionHelper
             _sshClient.Connect();
             if (!_sshClient.IsConnected)
                 return false;
+            Console.WriteLine($"SSH Connected: {_sshClient.IsConnected}");
 
             // Creiamo e avviamo il forward di porta
-            var port = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
+            var portForward = new ForwardedPortLocal("127.0.0.1", boundPort, "localhost", boundPort);
             try
             {
-                _sshClient.AddForwardedPort(port);
-                port.Start();
+                _sshClient.AddForwardedPort(portForward);
+                portForward.Start();
+                Console.WriteLine("Port forwarding started on 127.0.0.1:3306");
+
+                Console.WriteLine(portForward.IsStarted
+                    ? $"Port forwarding attivo su {portForward.BoundHost}:{portForward.BoundPort}"
+                    : "Il port forwarding non è stato avviato correttamente.");
             }
             catch (SocketException ex)
             {
