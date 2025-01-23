@@ -96,7 +96,7 @@ public static class ProcessPorts
         process.BeginErrorReadLine();
 
         // Utilizziamo Task.Run + WaitForExit con un timeout
-        bool exitedInTime = await Task.Run(() => process.WaitForExit(timeoutMs));
+        bool exitedInTime = await Task.Run(() => process.WaitForExit(timeoutMs)).ConfigureAwait(false);
         if (!exitedInTime)
         {
             try

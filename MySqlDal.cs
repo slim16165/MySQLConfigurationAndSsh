@@ -6,7 +6,7 @@ using MySqlConnector;
 
 namespace MySQLConfigurationAndSsh;
 
-public static class MySqlDal
+public static partial class MySqlDal
 {
     //public static MySqlConnection connDbSeozoom => GenericMySQLConfiguration.WebsitesConfigs
     //    .SingleOrDefault(w => w.ShortSiteName == "DbSeozoom")?.MySql;
