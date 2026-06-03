@@ -1,218 +1,208 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Threading;
 using System.Threading.Tasks;
-using MySQLConfigurationAndSsh.Ssh;
 using MySqlConnector;
 using Renci.SshNet;
 using SerpRankingAPI.Config;
 
 namespace MySQLConfigurationAndSsh;
 
-public class ConnectionHelper
+public static class ConnectionHelper
 {
     private static SshClient _sshClient;
 
+    public static event EventHandler<TupleEventArgs<string, List<Process>>> ShowMessageBoxEvent;
+
     public static string GetIPAddress()
     {
-        String address = "";
-        WebRequest request = WebRequest.Create("http://checkip.dyndns.org/");
-        using (WebResponse response = request.GetResponse())
-        using (StreamReader stream = new StreamReader(response.GetResponseStream()))
+        var address = string.Empty;
+        var request = WebRequest.Create("http://checkip.dyndns.org/");
+        using (var response = request.GetResponse())
+        using (var stream = new StreamReader(response.GetResponseStream()))
         {
             address = stream.ReadToEnd();
         }
 
-        int first = address.IndexOf("Address: ") + 9;
-        int last = address.LastIndexOf("</body>");
-        address = address.Substring(first, last - first);
+        var first = address.IndexOf("Address: ", StringComparison.Ordinal) + 9;
+        var last = address.LastIndexOf("</body>", StringComparison.Ordinal);
+        return address.Substring(first, last - first);
+    }
 
-        return address;
+    public static async Task<string> GetPublicIPAddressAsync()
+    {
+        try
+        {
+            using var httpClient = new HttpClient();
+            var response = await httpClient.GetStringAsync("https://api.ipify.org").ConfigureAwait(false);
+            return response.Trim();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Impossibile determinare l'IP pubblico.", ex);
+        }
     }
 
     public static IPAddress GetLocalIPv4AddressRequiresInternet()
     {
-        var localIp = IPAddress.None;
         try
         {
-            using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            socket.Connect("8.8.8.8", 65530);
+            if (socket.LocalEndPoint is IPEndPoint endPoint)
             {
-                // Connect socket to Google's Public DNS service
-                socket.Connect("8.8.8.8", 65530);
-                if (socket.LocalEndPoint is not IPEndPoint endPoint)
-                {
-                    throw new InvalidOperationException($"Error occurred casting {socket.LocalEndPoint} to IPEndPoint");
-                }
-                localIp = endPoint.Address;
+                return endPoint.Address;
             }
+
+            throw new InvalidOperationException("Impossibile determinare l'EndPoint locale.");
         }
         catch (SocketException ex)
         {
-            // Handle exception
+            Debug.WriteLine($"[GetLocalIPv4] SocketException: {ex.Message}");
+            return IPAddress.None;
         }
-
-        return localIp;
     }
 
-    public static event EventHandler<TupleEventArgs<string, List<Process>>> ShowMessageBoxEvent;
+    public static bool IsPortInUse(uint boundPort)
+    {
+        var ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+        var tcpListeners = ipProperties.GetActiveTcpListeners();
+        return tcpListeners.Any(endpoint => endpoint.Port == boundPort);
+    }
 
     public static void CheckAndHandlePortIsUsed()
     {
-        //potrei avere uno scambio di messaggi asincroni, un riferimento al chiamante, esporre degli eventi 
-        //Deconstructor
-        var (processesUsingPort, debug_message) = CheckIfPortIsUsed(3306);
-
-        if (processesUsingPort.Any())
+        if (_sshClient?.IsConnected == true)
         {
-            string text = $"Un altro programma sta utilizzando la porta 3306, vuoi terminarlo?\n{debug_message}";
-
-            //var k = new List<(string Testo, bool info)>();
-            ShowMessageBoxEvent?.Invoke(typeof(ConnectionHelper), TupleEventArgs.Create(text, processesUsingPort));
+            return;
         }
+
+        var (processesUsingPort, debugMessage) = CheckProcessUsingPort(3306);
+        if (!processesUsingPort.Any())
+        {
+            return;
+        }
+
+        var text = $"Un altro programma sta utilizzando la porta 3306. Vuoi terminarlo?\n{debugMessage}";
+        ShowMessageBoxEvent?.Invoke(typeof(ConnectionHelper), TupleEventArgs.Create(text, processesUsingPort));
     }
 
-    //protected virtual void OnRaiseShowMessageBoxEvent(EventArgs e)
-    //{
-    //    // Call to raise the event.
-    //    ShowMessageBoxEvent?.Invoke(this, e);
-    //}
+    public static (List<Process> processes, string debugMessage) CheckProcessUsingPort(uint boundPort)
+    {
+        var used = ProcessPorts.ProcessPortMap.FindAll(x => x.PortNumber == boundPort);
+        if (!used.Any())
+        {
+            return (new List<Process>(), string.Empty);
+        }
+
+        var message = used.Select(s => s.ProcessPortDescription)
+            .Aggregate((a, b) => a + Environment.NewLine + b);
+
+        var processesUsingPort = (from proc in Process.GetProcesses()
+                join procPort in used on proc.Id equals procPort.ProcessId
+                select proc)
+            .ToList();
+
+        return (processesUsingPort, message);
+    }
+
+    public static bool CheckIfPortIsUsed(uint boundPort)
+    {
+        return IsPortInUse(boundPort);
+    }
 
     public static void KillProcess(List<Process> processToKill)
     {
-        foreach (var prs in processToKill)
+        KillProcesses(processToKill);
+    }
+
+    public static void KillProcesses(IEnumerable<Process> processesToKill)
+    {
+        foreach (var process in processesToKill)
         {
-            prs.Kill();
+            try
+            {
+                process.Kill();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Impossibile terminare il processo {process.ProcessName}. Errore: {ex.Message}");
+            }
         }
     }
 
     public static bool EnableSshIfPossible(uint boundPort)
     {
+        var selectedWebsite = WebSiteConfiguration.SelectedWebsite;
+        var credentials = selectedWebsite?.SshCredentials;
+        if (credentials == null || string.IsNullOrEmpty(credentials.Username) || string.IsNullOrEmpty(credentials.Password))
+        {
+            return false;
+        }
+
         try
         {
-            //If we don't have SSH credentials, use normal DB connection
-            var cred = WebSiteConfiguration.SelectedWebsite.SshCredentials;
-            if (cred == null || string.IsNullOrEmpty(cred.Username) || string.IsNullOrEmpty(cred.Password))
-                return false;
-
-            if (_sshClient != null && _sshClient != WebSiteConfiguration.SelectedWebsiteSsh)
+            if (_sshClient?.IsConnected == true)
             {
-                //_sshClient.Disconnect();
-                //_sshClient.RunCommand("service sshd restart >/dev/null 2>&1 &");
-                _sshClient.MyDispose();
-                Thread.Sleep(2000);
+                return true;
             }
 
-            //qui si collega, non la riga dopo!
+            _sshClient?.Dispose();
             _sshClient = WebSiteConfiguration.SelectedWebsiteSsh;
             _sshClient.Connect();
+            if (!_sshClient.IsConnected)
+            {
+                return false;
+            }
 
+            var forwardedPort = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
+            _sshClient.AddForwardedPort(forwardedPort);
+            forwardedPort.Start();
 
-            var port = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
-            _sshClient.AddForwardedPort(port);
-            port.Start();
-
-            WebSiteConfiguration.SelectedWebsite.MySql.Host = "localhost";
-
+            selectedWebsite.MySql.Host = "localhost";
             return true;
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-
-            throw;
+            Debug.WriteLine($"Errore nella connessione SSH: {ex.Message}");
+            _sshClient?.Disconnect();
+            return false;
         }
     }
 
-    public static (List<Process>, string) CheckIfPortIsUsed(uint boundPort)
+    public static bool CheckDbConnection(MySqlConnection mySqlConnection = null)
     {
-        List<ProcessPort> processes = ProcessPorts.ProcessPortMap.FindAll(x => x.PortNumber == boundPort);
-
-        if (!processes.Any()) return (new List<Process>(), "");
-
-        var message = processes.Select(s => s.ProcessPortDescription).Aggregate((a, b) => a + "\n" + b);
-        var processesUsingPort = from proc in Process.GetProcesses()
-            join procPort in processes on proc.Id equals procPort.ProcessId
-            select proc;
-
-        return (processesUsingPort.ToList(), message);
-
+        try
+        {
+            mySqlConnection ??= WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeoutConnection;
+            mySqlConnection.Open();
+            mySqlConnection.Close();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static async Task<bool> CheckDbConnectionAsync(MySqlConnection mySqlConnection = null)
     {
-        bool result;
         try
         {
             mySqlConnection ??= WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeoutConnection;
-
             await mySqlConnection.OpenAsync().ConfigureAwait(false);
-            result = true;
             await mySqlConnection.CloseAsync().ConfigureAwait(false);
+            return true;
         }
-        catch (Exception ex)
+        catch
         {
-            result = false;
+            return false;
         }
-
-        return result;
-    }
-
-}
-
-public static class TupleEventArgs
-{
-    static public TupleEventArgs<T1> Create<T1>(T1 item1)
-    {
-        return new TupleEventArgs<T1>(item1);
-    }
-
-    static public TupleEventArgs<T1, T2> Create<T1, T2>(T1 item1, T2 item2)
-    {
-        return new TupleEventArgs<T1, T2>(item1, item2);
-    }
-
-    static public TupleEventArgs<T1, T2, T3> Create<T1, T2, T3>(T1 item1, T2 item2, T3 item3)
-    {
-        return new TupleEventArgs<T1, T2, T3>(item1, item2, item3);
-    }
-}
-
-public class TupleEventArgs<T1> : EventArgs
-{
-    public T1 Item1;
-
-    public TupleEventArgs(T1 item1)
-    {
-        Item1 = item1;
-    }
-}
-
-public class TupleEventArgs<T1, T2> : EventArgs
-{
-    public T1 Item1;
-    public T2 Item2;
-
-    public TupleEventArgs(T1 item1, T2 item2)
-    {
-        Item1 = item1;
-        Item2 = item2;
-    }
-}
-
-public class TupleEventArgs<T1, T2, T3> : EventArgs
-{
-    public T1 Item1;
-    public T2 Item2;
-    public T3 Item3;
-
-    public TupleEventArgs(T1 item1, T2 item2, T3 item3)
-    {
-        Item1 = item1;
-        Item2 = item2;
-        Item3 = item3;
     }
 }

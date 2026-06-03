@@ -1,25 +1,23 @@
-﻿using System.Configuration;
-using System.IO.IsolatedStorage;
+using System.Configuration;
 using System.IO;
+using System.IO.IsolatedStorage;
 
 namespace MySQLConfigurationAndSsh;
 
 internal static class SettingsSaver
 {
-    public static void SaveOnConfigFile(string settingkey, string? settingvalue)
+    public static void SaveOnConfigFile(string settingKey, string? settingValue)
     {
-        // scrivere un'impostazione
         Configuration config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
-        if (config.AppSettings.Settings[settingkey] != null)
+        if (config.AppSettings.Settings[settingKey] != null)
         {
-            // Se l'impostazione esiste già, aggiorna il suo valore
-            config.AppSettings.Settings[settingkey].Value = settingvalue;
+            config.AppSettings.Settings[settingKey].Value = settingValue;
         }
         else
         {
-            // Altrimenti, aggiungi una nuova impostazione
-            config.AppSettings.Settings.Add(settingkey, settingvalue);
+            config.AppSettings.Settings.Add(settingKey, settingValue);
         }
+
         config.Save(ConfigurationSaveMode.Modified);
         ConfigurationManager.RefreshSection("appSettings");
     }
@@ -29,7 +27,6 @@ internal static class SettingsSaver
         return ConfigurationManager.AppSettings[settingKey];
     }
 
-
     public static void SaveOnIsolatedStorage()
     {
         using IsolatedStorageFile storage = IsolatedStorageFile.GetUserStoreForAssembly();
@@ -37,5 +34,4 @@ internal static class SettingsSaver
         using StreamWriter writer = new StreamWriter(stream);
         writer.Write("SettingValue");
     }
-
 }

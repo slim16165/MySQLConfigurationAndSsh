@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Xml.Serialization;
+using MySQLConfigurationAndSsh.Config;
 
 namespace MySQLConfigurationAndSsh.Config.Data;
 
