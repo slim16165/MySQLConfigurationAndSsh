@@ -139,7 +139,7 @@ public static class ConnectionHelper
 
     private static void StartOpenSsh(string alias, int remotePort)
     {
-        if (!Regex.IsMatch(alias, @"\A[a-zA-Z0-9_.-]{1,128}\z"))
+        if (!Regex.IsMatch(alias, @"\A[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}\z"))
             throw new InvalidOperationException("Invalid OpenSSH host alias.");
 
         var command = new ProcessStartInfo
