@@ -137,6 +137,23 @@ public static class ConnectionHelper
             throw new InvalidOperationException("SSH.NET local forward did not start.");
     }
 
+    /// <summary>
+    /// OpenSSH is installed under Windows System32, not necessarily on the WPF
+    /// process PATH. Sysnative reaches the native System32 from a 32-bit process.
+    /// Other installations retain the normal executable lookup fallback.
+    /// </summary>
+    private static string ResolveOpenSsh()
+    {
+        if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+            return "ssh";
+
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var folder = Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess
+            ? "Sysnative" : "System32";
+        var nativeExe = System.IO.Path.Combine(windows, folder, "OpenSSH", "ssh.exe");
+        return System.IO.File.Exists(nativeExe) ? nativeExe : "ssh.exe";
+    }
+
     private static void StartOpenSsh(string alias, int remotePort)
     {
         if (!Regex.IsMatch(alias, @"\A[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}\z"))
@@ -144,7 +161,7 @@ public static class ConnectionHelper
 
         var command = new ProcessStartInfo
         {
-            FileName = "ssh",
+            FileName = ResolveOpenSsh(),
             Arguments = "-N -T -o BatchMode=yes -o ExitOnForwardFailure=yes " +
                         "-o StrictHostKeyChecking=yes -o ConnectTimeout=8 " +
                         "-o ServerAliveInterval=30 -o ServerAliveCountMax=2 " +
