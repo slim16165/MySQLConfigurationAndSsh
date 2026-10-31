@@ -1,208 +1,215 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Net;
-using System.Net.Http;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using MySqlConnector;
+using MySQLConfigurationAndSsh.Config;
 using Renci.SshNet;
 using SerpRankingAPI.Config;
 
 namespace MySQLConfigurationAndSsh;
 
+/// <summary>
+/// Owns the one active desktop database tunnel. Database credentials remain in the
+/// original site configuration; forwarding never changes its host or port.
+/// </summary>
 public static class ConnectionHelper
 {
+    private static readonly object Sync = new();
+    private static WebsiteAppConfigBase _activeSite;
     private static SshClient _sshClient;
+    private static ForwardedPortLocal _forward;
+    private static Process _openSsh;
+    private static uint _localPort;
 
-    public static event EventHandler<TupleEventArgs<string, List<Process>>> ShowMessageBoxEvent;
-
-    public static string GetIPAddress()
+    public static bool RequiresTunnel(WebsiteAppConfigBase site)
     {
-        var address = string.Empty;
-        var request = WebRequest.Create("http://checkip.dyndns.org/");
-        using (var response = request.GetResponse())
-        using (var stream = new StreamReader(response.GetResponseStream()))
-        {
-            address = stream.ReadToEnd();
-        }
-
-        var first = address.IndexOf("Address: ", StringComparison.Ordinal) + 9;
-        var last = address.LastIndexOf("</body>", StringComparison.Ordinal);
-        return address.Substring(first, last - first);
+        var ssh = site?.SshCredentials;
+        return ssh != null && (!string.IsNullOrWhiteSpace(ssh.OpenSshAlias) ||
+            (!string.IsNullOrWhiteSpace(ssh.Username) && !string.IsNullOrWhiteSpace(ssh.Password)));
     }
 
-    public static async Task<string> GetPublicIPAddressAsync()
-    {
-        try
-        {
-            using var httpClient = new HttpClient();
-            var response = await httpClient.GetStringAsync("https://api.ipify.org").ConfigureAwait(false);
-            return response.Trim();
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("Impossibile determinare l'IP pubblico.", ex);
-        }
-    }
+    public static bool EnableSshIfPossible(uint boundPort = 3306)
+        => EnableSshIfPossible(WebSiteConfiguration.SelectedWebsite);
 
-    public static IPAddress GetLocalIPv4AddressRequiresInternet()
+    public static bool EnableSshIfPossible(WebsiteAppConfigBase site)
     {
-        try
+        if (!RequiresTunnel(site))
         {
-            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            socket.Connect("8.8.8.8", 65530);
-            if (socket.LocalEndPoint is IPEndPoint endPoint)
-            {
-                return endPoint.Address;
-            }
-
-            throw new InvalidOperationException("Impossibile determinare l'EndPoint locale.");
-        }
-        catch (SocketException ex)
-        {
-            Debug.WriteLine($"[GetLocalIPv4] SocketException: {ex.Message}");
-            return IPAddress.None;
-        }
-    }
-
-    public static bool IsPortInUse(uint boundPort)
-    {
-        var ipProperties = IPGlobalProperties.GetIPGlobalProperties();
-        var tcpListeners = ipProperties.GetActiveTcpListeners();
-        return tcpListeners.Any(endpoint => endpoint.Port == boundPort);
-    }
-
-    public static void CheckAndHandlePortIsUsed()
-    {
-        if (_sshClient?.IsConnected == true)
-        {
-            return;
+            CloseTunnel();
+            return false;
         }
 
-        var (processesUsingPort, debugMessage) = CheckProcessUsingPort(3306);
-        if (!processesUsingPort.Any())
+        lock (Sync)
         {
-            return;
-        }
+            if (ReferenceEquals(site, _activeSite) && TunnelIsAlive())
+                return true;
 
-        var text = $"Un altro programma sta utilizzando la porta 3306. Vuoi terminarlo?\n{debugMessage}";
-        ShowMessageBoxEvent?.Invoke(typeof(ConnectionHelper), TupleEventArgs.Create(text, processesUsingPort));
-    }
-
-    public static (List<Process> processes, string debugMessage) CheckProcessUsingPort(uint boundPort)
-    {
-        var used = ProcessPorts.ProcessPortMap.FindAll(x => x.PortNumber == boundPort);
-        if (!used.Any())
-        {
-            return (new List<Process>(), string.Empty);
-        }
-
-        var message = used.Select(s => s.ProcessPortDescription)
-            .Aggregate((a, b) => a + Environment.NewLine + b);
-
-        var processesUsingPort = (from proc in Process.GetProcesses()
-                join procPort in used on proc.Id equals procPort.ProcessId
-                select proc)
-            .ToList();
-
-        return (processesUsingPort, message);
-    }
-
-    public static bool CheckIfPortIsUsed(uint boundPort)
-    {
-        return IsPortInUse(boundPort);
-    }
-
-    public static void KillProcess(List<Process> processToKill)
-    {
-        KillProcesses(processToKill);
-    }
-
-    public static void KillProcesses(IEnumerable<Process> processesToKill)
-    {
-        foreach (var process in processesToKill)
-        {
+            CloseTunnelCore();
             try
             {
-                process.Kill();
+                var alias = site.SshCredentials.OpenSshAlias;
+                _localPort = AllocateLoopbackPort();
+                if (!string.IsNullOrWhiteSpace(alias))
+                    StartOpenSsh(alias, site.MySql.Port > 0 ? site.MySql.Port : 3306);
+                else
+                    StartSshNet(site);
+                _activeSite = site;
+                return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Impossibile terminare il processo {process.ProcessName}. Errore: {ex.Message}");
+                Debug.WriteLine("Database tunnel failed: " + ex.GetType().Name);
+                CloseTunnelCore();
+                return false;
             }
         }
     }
 
-    public static bool EnableSshIfPossible(uint boundPort)
+    public static MySqlConnection CreateConnection(WebsiteAppConfigBase site, bool shortTimeout = false)
     {
-        var selectedWebsite = WebSiteConfiguration.SelectedWebsite;
-        var credentials = selectedWebsite?.SshCredentials;
-        if (credentials == null || string.IsNullOrEmpty(credentials.Username) || string.IsNullOrEmpty(credentials.Password))
+        if (site == null) throw new InvalidOperationException("Select a website first.");
+        lock (Sync)
         {
-            return false;
-        }
+            if (RequiresTunnel(site))
+            {
+                if (!ReferenceEquals(site, _activeSite) || !TunnelIsAlive())
+                    throw new InvalidOperationException("No active SSH tunnel for the selected website.");
+                return site.MySql.CreateConnection("127.0.0.1", (int)_localPort, shortTimeout ? 5 : (int?)null);
+            }
 
+            var host = site.MySql.Host;
+            if (host != "localhost" && host != "127.0.0.1" && host != "::1")
+                throw new InvalidOperationException("Remote database requires a tunnel.");
+            return site.MySql.CreateConnection(timeoutSeconds: shortTimeout ? 5 : (int?)null);
+        }
+    }
+
+    public static async Task<bool> CheckDbConnectionAsync(MySqlConnection connection = null)
+    {
         try
         {
-            if (_sshClient?.IsConnected == true)
+            using (var db = connection ?? CreateConnection(WebSiteConfiguration.SelectedWebsite, true))
             {
+                await db.OpenAsync().ConfigureAwait(false);
                 return true;
             }
-
-            _sshClient?.Dispose();
-            _sshClient = WebSiteConfiguration.SelectedWebsiteSsh;
-            _sshClient.Connect();
-            if (!_sshClient.IsConnected)
-            {
-                return false;
-            }
-
-            var forwardedPort = new ForwardedPortLocal("localhost", boundPort, "localhost", boundPort);
-            _sshClient.AddForwardedPort(forwardedPort);
-            forwardedPort.Start();
-
-            selectedWebsite.MySql.Host = "localhost";
-            return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Errore nella connessione SSH: {ex.Message}");
-            _sshClient?.Disconnect();
+            Debug.WriteLine("Database connection failed: " + ex.GetType().Name);
             return false;
         }
     }
 
-    public static bool CheckDbConnection(MySqlConnection mySqlConnection = null)
+    public static bool CheckDbConnection(MySqlConnection connection = null)
+        => CheckDbConnectionAsync(connection).GetAwaiter().GetResult();
+
+    public static void CloseTunnel()
     {
-        try
+        lock (Sync)
+            CloseTunnelCore();
+    }
+
+    private static uint AllocateLoopbackPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try { return (uint)((IPEndPoint)listener.LocalEndpoint).Port; }
+        finally { listener.Stop(); }
+    }
+
+    private static void StartSshNet(WebsiteAppConfigBase site)
+    {
+        var credentials = site.SshCredentials;
+        _sshClient = new SshClient(site.MySql.Host, credentials.Port ?? 22,
+            credentials.Username, credentials.Password);
+        _sshClient.ConnectionInfo.Timeout = TimeSpan.FromSeconds(12);
+        _sshClient.Connect();
+        _forward = new ForwardedPortLocal("127.0.0.1", _localPort, "127.0.0.1",
+            (uint)(site.MySql.Port > 0 ? site.MySql.Port : 3306));
+        _sshClient.AddForwardedPort(_forward);
+        _forward.Start();
+        if (!_forward.IsStarted)
+            throw new InvalidOperationException("SSH.NET local forward did not start.");
+    }
+
+    private static void StartOpenSsh(string alias, int remotePort)
+    {
+        if (!Regex.IsMatch(alias, @"\A[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}\z"))
+            throw new InvalidOperationException("Invalid OpenSSH host alias.");
+
+        var command = new ProcessStartInfo
         {
-            mySqlConnection ??= WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeoutConnection;
-            mySqlConnection.Open();
-            mySqlConnection.Close();
-            return true;
+            FileName = "ssh",
+            Arguments = "-N -T -o BatchMode=yes -o ExitOnForwardFailure=yes " +
+                        "-o StrictHostKeyChecking=yes -o ConnectTimeout=8 " +
+                        "-o ServerAliveInterval=30 -o ServerAliveCountMax=2 " +
+                        "-L 127.0.0.1:" + _localPort + ":127.0.0.1:" + remotePort + " " + alias,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        _openSsh = Process.Start(command) ??
+            throw new InvalidOperationException("Cannot launch OpenSSH.");
+        for (var i = 0; i < 80; i++)
+        {
+            if (_openSsh.HasExited)
+                throw new InvalidOperationException("OpenSSH exited before forwarding.");
+            if (PortAcceptsConnections(_localPort))
+                return;
+            Thread.Sleep(100);
         }
-        catch
+        throw new TimeoutException("OpenSSH forwarding did not become available.");
+    }
+
+    private static bool PortAcceptsConnections(uint port)
+    {
+        using (var tcp = new TcpClient())
         {
-            return false;
+            try
+            {
+                var result = tcp.BeginConnect(IPAddress.Loopback, (int)port, null, null);
+                using (result.AsyncWaitHandle)
+                {
+                    if (!result.AsyncWaitHandle.WaitOne(150)) return false;
+                    tcp.EndConnect(result);
+                    return tcp.Connected;
+                }
+            }
+            catch (SocketException) { return false; }
         }
     }
 
-    public static async Task<bool> CheckDbConnectionAsync(MySqlConnection mySqlConnection = null)
+    private static bool TunnelIsAlive()
     {
-        try
+        if (_localPort == 0) return false;
+        if (_openSsh != null) return !_openSsh.HasExited && PortAcceptsConnections(_localPort);
+        return _sshClient?.IsConnected == true && _forward?.IsStarted == true;
+    }
+
+    private static void CloseTunnelCore()
+    {
+        try { _forward?.Stop(); } catch (Exception) { }
+        try { _sshClient?.Disconnect(); } catch (Exception) { }
+        _forward?.Dispose();
+        _sshClient?.Dispose();
+        _forward = null;
+        _sshClient = null;
+        if (_openSsh != null)
         {
-            mySqlConnection ??= WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeoutConnection;
-            await mySqlConnection.OpenAsync().ConfigureAwait(false);
-            await mySqlConnection.CloseAsync().ConfigureAwait(false);
-            return true;
+            try
+            {
+                if (!_openSsh.HasExited) _openSsh.Kill();
+                _openSsh.WaitForExit(1500);
+            }
+            catch (Exception) { }
+            _openSsh.Dispose();
+            _openSsh = null;
         }
-        catch
-        {
-            return false;
-        }
+        _localPort = 0;
+        _activeSite = null;
     }
 }
