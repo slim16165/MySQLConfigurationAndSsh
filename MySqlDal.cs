@@ -21,7 +21,7 @@ public static partial class MySqlDal
                 throw new Exception("Devi selezionare un sito");
             }
 
-            return WebSiteConfiguration.SelectedWebsite.MySql.Connection;
+            return ConnectionHelper.CreateConnection(WebSiteConfiguration.SelectedWebsite);
         }
     }
 
@@ -34,7 +34,7 @@ public static partial class MySqlDal
                 throw new Exception("Devi selezionare un sito");
             }
 
-            return WebSiteConfiguration.SelectedWebsite.MySql.ShortTimeoutConnection;
+            return ConnectionHelper.CreateConnection(WebSiteConfiguration.SelectedWebsite, true);
         }
     }
 
