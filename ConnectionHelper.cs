@@ -78,7 +78,16 @@ public static class ConnectionHelper
             {
                 if (!ReferenceEquals(site, _activeSite) || !TunnelIsAlive())
                     throw new InvalidOperationException("No active SSH tunnel for the selected website.");
-                return site.MySql.CreateConnection("127.0.0.1", (int)_localPort, shortTimeout ? 5 : (int?)null);
+                var connection = site.MySql.CreateConnection("127.0.0.1", (int)_localPort,
+                    shortTimeout ? 5 : (int?)null);
+                // SSH already encrypts the loopback tunnel; MySQL TLS negotiation fails
+                // against current IONOS MySQL when used from the .NET Framework client.
+                var options = new MySqlConnectionStringBuilder(connection.ConnectionString)
+                {
+                    SslMode = MySqlSslMode.Disabled
+                };
+                connection.ConnectionString = options.ConnectionString;
+                return connection;
             }
 
             var host = site.MySql.Host;
