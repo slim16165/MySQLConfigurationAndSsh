@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
@@ -25,6 +26,9 @@ public static class ConnectionHelper
     private static Process _openSsh;
     private static uint _localPort;
 
+    // Sanitized diagnostic for UI and support; never contains SSH credentials or hostnames.
+    public static string LastTunnelFailureCode { get; private set; } = "";
+
     public static bool RequiresTunnel(WebsiteAppConfigBase site)
     {
         var ssh = site?.SshCredentials;
@@ -49,6 +53,7 @@ public static class ConnectionHelper
                 return true;
 
             CloseTunnelCore();
+            LastTunnelFailureCode = "";
             try
             {
                 var alias = site.SshCredentials.OpenSshAlias;
@@ -64,6 +69,11 @@ public static class ConnectionHelper
             {
                 Debug.WriteLine("Database tunnel failed: " + ex.GetType().Name);
                 CloseTunnelCore();
+                LastTunnelFailureCode = ex is TimeoutException ? "SSH_FORWARD_TIMEOUT"
+                    : ex is InvalidOperationException && ex.Message.Contains("exited before forwarding")
+                        ? "SSH_EARLY_EXIT"
+                    : ex is System.ComponentModel.Win32Exception win32 ? "SSH_PROCESS_START_" + win32.NativeErrorCode
+                    : ex.GetType().Name;
                 return false;
             }
         }
@@ -153,7 +163,7 @@ public static class ConnectionHelper
 
         var command = new ProcessStartInfo
         {
-            FileName = "ssh",
+            FileName = GetOpenSshExecutable(),
             Arguments = "-N -T -o BatchMode=yes -o ExitOnForwardFailure=yes " +
                         "-o StrictHostKeyChecking=yes -o ConnectTimeout=8 " +
                         "-o ServerAliveInterval=30 -o ServerAliveCountMax=2 " +
@@ -172,6 +182,25 @@ public static class ConnectionHelper
             Thread.Sleep(100);
         }
         throw new TimeoutException("OpenSSH forwarding did not become available.");
+    }
+
+    private static string GetOpenSshExecutable()
+    {
+        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+        {
+            var systemSsh = Path.Combine(Environment.GetFolderPath(
+                Environment.SpecialFolder.System), "OpenSSH", "ssh.exe");
+            if (File.Exists(systemSsh)) return systemSsh;
+
+            // A 32-bit process must use Sysnative to access the 64-bit OpenSSH binary.
+            if (Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess)
+            {
+                var sysnativeSsh = Path.Combine(Environment.GetFolderPath(
+                    Environment.SpecialFolder.Windows), "Sysnative", "OpenSSH", "ssh.exe");
+                if (File.Exists(sysnativeSsh)) return sysnativeSsh;
+            }
+        }
+        return "ssh";
     }
 
     private static bool PortAcceptsConnections(uint port)
