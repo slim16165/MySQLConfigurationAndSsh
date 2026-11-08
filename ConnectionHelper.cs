@@ -89,7 +89,7 @@ public static class ConnectionHelper
                 if (!ReferenceEquals(site, _activeSite) || !TunnelIsAlive())
                     throw new InvalidOperationException("No active SSH tunnel for the selected website.");
                 var connection = site.MySql.CreateConnection("127.0.0.1", (int)_localPort,
-                    shortTimeout ? 5 : (int?)null);
+                    shortTimeout ? 20 : (int?)null);
                 // SSH already encrypts the loopback tunnel; MySQL TLS negotiation fails
                 // against current IONOS MySQL when used from the .NET Framework client.
                 var options = new MySqlConnectionStringBuilder(connection.ConnectionString)
@@ -165,7 +165,7 @@ public static class ConnectionHelper
         {
             FileName = GetOpenSshExecutable(),
             Arguments = "-N -T -o BatchMode=yes -o ExitOnForwardFailure=yes " +
-                        "-o StrictHostKeyChecking=yes -o ConnectTimeout=8 " +
+                        "-o StrictHostKeyChecking=yes -o ConnectTimeout=30 " +
                         "-o ServerAliveInterval=30 -o ServerAliveCountMax=2 " +
                         "-L 127.0.0.1:" + _localPort + ":127.0.0.1:" + remotePort + " " + alias,
             UseShellExecute = false,
@@ -173,15 +173,17 @@ public static class ConnectionHelper
         };
         _openSsh = Process.Start(command) ??
             throw new InvalidOperationException("Cannot launch OpenSSH.");
-        for (var i = 0; i < 80; i++)
+        var startup = Stopwatch.StartNew();
+        while (startup.Elapsed < TimeSpan.FromSeconds(75))
         {
             if (_openSsh.HasExited)
                 throw new InvalidOperationException("OpenSSH exited before forwarding.");
-            if (PortAcceptsConnections(_localPort))
+            // A listening port alone does not prove SSH can reach the remote MySQL.
+            if (PortAcceptsConnections(_localPort) && PortReturnsMySqlGreeting(_localPort))
                 return;
-            Thread.Sleep(100);
+            Thread.Sleep(300);
         }
-        throw new TimeoutException("OpenSSH forwarding did not become available.");
+        throw new TimeoutException("OpenSSH forwarding did not reach MySQL.");
     }
 
     private static string GetOpenSshExecutable()
@@ -219,6 +221,34 @@ public static class ConnectionHelper
             }
             catch (SocketException) { return false; }
         }
+    }
+
+    private static bool PortReturnsMySqlGreeting(uint port)
+    {
+        using var tcp = new TcpClient();
+        try
+        {
+            var pending = tcp.BeginConnect(IPAddress.Loopback, (int)port, null, null);
+            using (pending.AsyncWaitHandle)
+            {
+                if (!pending.AsyncWaitHandle.WaitOne(300)) return false;
+                tcp.EndConnect(pending);
+            }
+
+            tcp.ReceiveTimeout = 4000;
+            using var stream = tcp.GetStream();
+            var greeting = new byte[5];
+            var read = 0;
+            while (read < greeting.Length)
+            {
+                var count = stream.Read(greeting, read, greeting.Length - read);
+                if (count == 0) return false;
+                read += count;
+            }
+            return greeting[3] == 0 && greeting[4] == 10;
+        }
+        catch (IOException) { return false; }
+        catch (SocketException) { return false; }
     }
 
     private static bool TunnelIsAlive()
